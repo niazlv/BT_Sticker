@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">BT sticker</string>
+    <string name="bluetooth_not_supported">BT not supported</string>
+</resources>
