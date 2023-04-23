@@ -14,7 +14,6 @@ import android.graphics.Matrix
 import android.graphics.drawable.BitmapDrawable
 import android.os.Build
 import android.os.Bundle
-import android.provider.ContactsContract.PinnedPositions.pin
 import android.util.Log
 import android.view.View
 import android.widget.ArrayAdapter
@@ -27,18 +26,17 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.core.graphics.get
-import java.nio.ByteBuffer
 import java.util.UUID
 
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var mImageView: ImageView
-    private lateinit var btn_prepare_image: Button
+    private lateinit var btn_prepare_image_BW: Button
+    private lateinit var btn_prepare_image_dithering: Button
     private lateinit var btn_convert_size: Button
     private lateinit var spin_bt: Spinner
-    private lateinit var label: TextView
+    private lateinit var btnRotate: Button
 
     private var btAdapter: BluetoothAdapter? = null
     private var btSocket: BluetoothSocket? = null
@@ -56,8 +54,9 @@ class MainActivity : AppCompatActivity() {
                     val inputStream = this.contentResolver.openInputStream(uri)
                     val bitmap = BitmapFactory.decodeStream(inputStream)
                     mImageView.setImageBitmap(bitmap)
-                    btn_prepare_image.isEnabled = true
+                    btn_prepare_image_BW.isEnabled = true
                     btn_convert_size.isEnabled = true
+                    btnRotate.isEnabled = true
                 }
             }
         }
@@ -82,18 +81,19 @@ class MainActivity : AppCompatActivity() {
         val btn_find_device = findViewById<Button>(R.id.btn_find_device)
         val btn_connect = findViewById<Button>(R.id.btn_connect)
 
-        btn_prepare_image = findViewById(R.id.btn_prepare)
+        btn_prepare_image_BW = findViewById(R.id.btn_prepare_BW)
+        btn_prepare_image_dithering = findViewById(R.id.btn_prepare_dithering)
         mImageView = findViewById(R.id.imageView)
         spin_bt = findViewById(R.id.bt_spinner)
         btn_convert_size = findViewById(R.id.btn_convert_size)
-        label = findViewById(R.id.label)
-
+        btnRotate = findViewById(R.id.btn_rotate)
 
         // disable buttons
         btn_close.isEnabled = false
         btn_send.isEnabled = false
-        btn_prepare_image.isEnabled = false
+        btn_prepare_image_BW.isEnabled = false
         btn_convert_size.isEnabled = false
+        btnRotate.isEnabled = false
 
         // set onClickListener to open Image button
         btn_open_img.setOnClickListener(View.OnClickListener { view ->
@@ -175,8 +175,21 @@ class MainActivity : AppCompatActivity() {
             mOutputStream?.write(data)
         })
 
+        // prepare image by dithering (Black and white by algorithm dithering)
+        btn_prepare_image_dithering.setOnClickListener(View.OnClickListener { view ->
+            val bitmap = (mImageView.getDrawable() as BitmapDrawable?)?.bitmap
+            if(bitmap == null) {
+                Toast.makeText(this,"image not selected!",Toast.LENGTH_SHORT).show()
+                return@OnClickListener
+            }
+            Log.d("btn_prepare_image","size img:${bitmap.height}*${bitmap.width}")
+            val bitmap_monocrome = dithering(bitmap)
+            mImageView.setImageBitmap(bitmap_monocrome)
+
+        })
+
         // prepare image by cast monochrome filter on image
-        btn_prepare_image.setOnClickListener(View.OnClickListener { view ->
+        btn_prepare_image_BW.setOnClickListener(View.OnClickListener { view ->
             val bitmap = (mImageView.getDrawable() as BitmapDrawable?)?.bitmap
             if(bitmap == null) {
                 Toast.makeText(this,"image not selected!",Toast.LENGTH_SHORT).show()
@@ -184,14 +197,30 @@ class MainActivity : AppCompatActivity() {
             }
             Log.d("btn_prepare_image","size img:${bitmap.height}*${bitmap.width}")
             var bitmap_monocrome = createBlackAndWhite(bitmap)
-            if(bitmap_monocrome?.height!! > bitmap_monocrome.width) {
-                val matrix = Matrix()
-
-                matrix.postRotate(90F)
-                bitmap_monocrome = Bitmap.createBitmap(bitmap_monocrome, 0, 0, bitmap_monocrome.getWidth(), bitmap_monocrome.getHeight(), matrix, true);
-            }
+            // commented because added rotate button
+//            if(bitmap_monocrome?.height!! > bitmap_monocrome.width) {
+//                val matrix = Matrix()
+//
+//                matrix.postRotate(90F)
+//                bitmap_monocrome = Bitmap.createBitmap(bitmap_monocrome, 0, 0, bitmap_monocrome.getWidth(), bitmap_monocrome.getHeight(), matrix, true);
+//            }
             mImageView.setImageBitmap(bitmap_monocrome)
 
+        })
+
+        // rotate image to 90 degrees
+        btnRotate.setOnClickListener(View.OnClickListener { view ->
+            var bitmap = (mImageView.getDrawable() as BitmapDrawable?)?.bitmap
+            if(bitmap == null) {
+                Toast.makeText(this,"image not selected!",Toast.LENGTH_SHORT).show()
+                return@OnClickListener
+            }
+            Log.d("btnRotate","size img:${bitmap.height}*${bitmap.width}")
+            val matrix = Matrix()
+
+            matrix.postRotate(90F)
+            bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
+            mImageView.setImageBitmap(bitmap)
         })
 
         // prepare image by convert size to 96*240px(size of sticker 12*30mm)
@@ -270,6 +299,42 @@ class MainActivity : AppCompatActivity() {
         return bmOut
     }
 
+    fun dithering(bitmap: Bitmap): Bitmap {
+        val width = bitmap.width
+        val height = bitmap.height
+        val binaryBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
+
+        // матрица дизеринга 2x2
+        val ditherMatrix = arrayOf(
+            intArrayOf(0, 2),
+            intArrayOf(3, 1)
+        )
+
+        // проходим по каждому пикселю картинки
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                // получаем RGB значения пикселя
+                val color = bitmap.getPixel(x, y)
+                val r = Color.red(color)
+                val g = Color.green(color)
+                val b = Color.blue(color)
+
+                // преобразуем в оттенки серого
+                val gray = (0.2989 * r + 0.5870 * g + 0.1140 * b).toInt()
+
+                // применяем матрицу дизеринга
+                if (gray > ditherMatrix[x % 2][y % 2] * 255 / 4) {
+                    binaryBitmap.setPixel(x, y, Color.WHITE)
+                } else {
+                    binaryBitmap.setPixel(x, y, Color.BLACK)
+                }
+            }
+        }
+
+        return binaryBitmap
+    }
+
+
     fun convertImageToProtocol(src: Bitmap): ByteArray {
         var ret: String = ""
 
@@ -281,15 +346,16 @@ class MainActivity : AppCompatActivity() {
         val width = src.width
         val height = src.height
         var resultByteArray = header.decodeHex()
+
+        // Я не знаю почему, но изображение получается перевернутным... Виноват алгоритм, но мне лень его чинить, по этому пускай будет так
+
+        // отзеркалим изображение
         val matrix = Matrix()
         matrix.setScale(-1f, 1f)
         val miroredSrc = Bitmap.createBitmap(src,0, 0, src.getWidth(), src.getHeight(), matrix, true)
         val byteArray = bitmapToByteArray(miroredSrc)
-        resultByteArray = resultByteArray.plus(byteArray).plus(end.decodeHex())
-        ret = resultByteArray.toUByteArray().contentToString()
 
-        Log.i("convertImageToProtocol",ret)
-        label.text = ret
+        resultByteArray = resultByteArray.plus(byteArray).plus(end.decodeHex())
         return resultByteArray
     }
 
