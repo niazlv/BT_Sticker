@@ -281,7 +281,10 @@ class MainActivity : AppCompatActivity() {
         val width = src.width
         val height = src.height
         var resultByteArray = header.decodeHex()
-        val byteArray = bitmapToByteArray(src)
+        val matrix = Matrix()
+        matrix.setScale(-1f, 1f)
+        val miroredSrc = Bitmap.createBitmap(src,0, 0, src.getWidth(), src.getHeight(), matrix, true)
+        val byteArray = bitmapToByteArray(miroredSrc)
         resultByteArray = resultByteArray.plus(byteArray).plus(end.decodeHex())
         ret = resultByteArray.toUByteArray().contentToString()
 
