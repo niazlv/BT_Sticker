@@ -12,6 +12,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.drawable.BitmapDrawable
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -19,13 +20,17 @@ import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.ImageView
+import android.widget.SeekBar
 import android.widget.Spinner
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.google.android.material.slider.Slider
+import com.google.android.material.switchmaterial.SwitchMaterial
 import java.util.UUID
 
 
@@ -37,6 +42,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btn_convert_size: Button
     private lateinit var spin_bt: Spinner
     private lateinit var btnRotate: Button
+    private lateinit var btnRealSize: Button
+    private lateinit var btnRestore: Button
 
     private var btAdapter: BluetoothAdapter? = null
     private var btSocket: BluetoothSocket? = null
@@ -45,11 +52,13 @@ class MainActivity : AppCompatActivity() {
     // store a paired devices
     private var ArrDevice: ArrayList<BluetoothDevice> = ArrayList()
 
+    private lateinit var savedUriImage: Uri
     // monitoring any activity returns
     private val someActivityResultLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == Activity.RESULT_OK) {
                 result.data?.data?.also { uri ->
                     Log.d("TAG", "Selected file URI: $uri")
+                    savedUriImage = uri
                     // set image to imageView
                     val inputStream = this.contentResolver.openInputStream(uri)
                     val bitmap = BitmapFactory.decodeStream(inputStream)
@@ -57,6 +66,8 @@ class MainActivity : AppCompatActivity() {
                     btn_prepare_image_BW.isEnabled = true
                     btn_convert_size.isEnabled = true
                     btnRotate.isEnabled = true
+                    btnRealSize.isEnabled = true
+                    btnRestore.isEnabled = true
                 }
             }
         }
@@ -80,6 +91,12 @@ class MainActivity : AppCompatActivity() {
         val btn_close = findViewById<Button>(R.id.btn_close)
         val btn_find_device = findViewById<Button>(R.id.btn_find_device)
         val btn_connect = findViewById<Button>(R.id.btn_connect)
+        var ivRealSize = findViewById<ImageView>(R.id.iv_real_size)
+
+
+        val seekBarMatrix = findViewById<SeekBar>(R.id.seekBarMatrix)
+        val sliderThreshold = findViewById<Slider>(R.id.slider_threshold)
+        val switchInverse = findViewById<SwitchMaterial>(R.id.switchInverse)
 
         btn_prepare_image_BW = findViewById(R.id.btn_prepare_BW)
         btn_prepare_image_dithering = findViewById(R.id.btn_prepare_dithering)
@@ -87,6 +104,9 @@ class MainActivity : AppCompatActivity() {
         spin_bt = findViewById(R.id.bt_spinner)
         btn_convert_size = findViewById(R.id.btn_convert_size)
         btnRotate = findViewById(R.id.btn_rotate)
+        btnRealSize = findViewById(R.id.btn_realsize)
+        btnRestore = findViewById<Button>(R.id.btnRestore)
+
 
         // disable buttons
         btn_close.isEnabled = false
@@ -94,6 +114,9 @@ class MainActivity : AppCompatActivity() {
         btn_prepare_image_BW.isEnabled = false
         btn_convert_size.isEnabled = false
         btnRotate.isEnabled = false
+        btnRealSize.isEnabled = false
+        btnRestore.isEnabled = false
+        ivRealSize.visibility = View.INVISIBLE
 
         // set onClickListener to open Image button
         btn_open_img.setOnClickListener(View.OnClickListener { view ->
@@ -183,7 +206,13 @@ class MainActivity : AppCompatActivity() {
                 return@OnClickListener
             }
             Log.d("btn_prepare_image","size img:${bitmap.height}*${bitmap.width}")
-            val bitmap_monocrome = dithering(bitmap)
+
+            val bitmap_monocrome = dithering(
+                bitmap,
+                sliderThreshold.value.toInt(),
+                seekBarMatrix.progress,
+                switchInverse.isChecked
+            )
             mImageView.setImageBitmap(bitmap_monocrome)
 
         })
@@ -196,7 +225,7 @@ class MainActivity : AppCompatActivity() {
                 return@OnClickListener
             }
             Log.d("btn_prepare_image","size img:${bitmap.height}*${bitmap.width}")
-            var bitmap_monocrome = createBlackAndWhite(bitmap)
+            val bitmap_monocrome = createBlackAndWhite(bitmap,sliderThreshold.value,switchInverse.isChecked)
             // commented because added rotate button
 //            if(bitmap_monocrome?.height!! > bitmap_monocrome.width) {
 //                val matrix = Matrix()
@@ -232,6 +261,31 @@ class MainActivity : AppCompatActivity() {
             }
             Log.d("btn_convert_size","size img:${bitmap.height}*${bitmap.width}")
             mImageView.setImageBitmap(Bitmap.createScaledBitmap(bitmap, 240, 96, false));
+        })
+
+        // selected other imageView
+        btnRealSize.setOnClickListener(View.OnClickListener { view ->
+            if(btnRealSize.text == "Real size") {
+                ivRealSize.visibility = View.VISIBLE
+                mImageView.visibility = View.INVISIBLE
+                ivRealSize.setImageBitmap((mImageView.getDrawable() as BitmapDrawable?)?.bitmap!!)
+                mImageView = findViewById(R.id.iv_real_size)
+                ivRealSize = findViewById(R.id.imageView)
+                btnRealSize.text = "Normal size"
+            } else {
+                ivRealSize.setImageBitmap((mImageView.getDrawable() as BitmapDrawable?)?.bitmap!!)
+                mImageView = findViewById(R.id.imageView)
+                ivRealSize = findViewById(R.id.iv_real_size)
+                btnRealSize.text = "Real size"
+                ivRealSize.visibility = View.INVISIBLE
+                mImageView.visibility = View.VISIBLE
+            }
+        })
+
+        btnRestore.setOnClickListener(View.OnClickListener{view ->
+            val inputStream = this.contentResolver.openInputStream(savedUriImage)
+            val bitmap = BitmapFactory.decodeStream(inputStream)
+            mImageView.setImageBitmap(bitmap)
         })
     }
 
@@ -270,14 +324,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    fun createBlackAndWhite(src: Bitmap): Bitmap? {
+    fun createBlackAndWhite(src: Bitmap,factor: Float = 255f, isinverted: Boolean = false, briColor: Array<Float> = arrayOf<Float>(0.299f,0.587f,0.114f)): Bitmap? {
         val width = src.width
         val height = src.height
         val bmOut = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        val factor = 255f
-        val redBri = 0.2126f
-        val greenBri = 0.2126f
-        val blueBri = 0.0722f
+        // val redBri = 0.2126f
+        // val greenBri = 0.2126f
+        // val blueBri = 0.0722f
         val length = width * height
         val inpixels = IntArray(length)
         val oupixels = IntArray(length)
@@ -287,11 +340,18 @@ class MainActivity : AppCompatActivity() {
             val R = pix shr 16 and 0xFF
             val G = pix shr 8 and 0xFF
             val B = pix and 0xFF
-            val lum = redBri * R / factor + greenBri * G / factor + blueBri * B / factor
+            val lum = briColor[0] * R / factor + briColor[1] * G / factor + briColor[2] * B / factor
             if (lum > 0.4) {
                 oupixels[point] = -0x1
             } else {
                 oupixels[point] = -0x1000000
+            }
+            if(isinverted) {
+                oupixels[point] = if (oupixels[point] == -0x1){
+                    -0x1000000
+                } else {
+                    -0x1
+                }
             }
             point++
         }
@@ -303,7 +363,9 @@ class MainActivity : AppCompatActivity() {
         val width = bitmap.width
         val height = bitmap.height
         val binaryBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
-
+        val redBri = 0.2989f
+        val greenBri = 0.5870f
+        val blueBri = 0.1140f
         // матрица дизеринга 2x2
         val ditherMatrix = arrayOf(
             intArrayOf(0, 2),
@@ -320,7 +382,7 @@ class MainActivity : AppCompatActivity() {
                 val b = Color.blue(color)
 
                 // преобразуем в оттенки серого
-                val gray = (0.2989 * r + 0.5870 * g + 0.1140 * b).toInt()
+                val gray = (redBri * r + greenBri * g + blueBri * b).toInt()
 
                 // применяем матрицу дизеринга
                 if (gray > ditherMatrix[x % 2][y % 2] * 255 / 4) {
@@ -333,6 +395,47 @@ class MainActivity : AppCompatActivity() {
 
         return binaryBitmap
     }
+
+    fun dithering(bitmap: Bitmap, threshold: Int = 255, matrixSize: Int = 8, isinverted: Boolean = false, briColor: Array<Float> = arrayOf<Float>(0.299f,0.587f,0.114f)): Bitmap {
+        val width = bitmap.width
+        val height = bitmap.height
+        val matrix = Array(matrixSize) { FloatArray(matrixSize) }
+        for (i in 0 until matrixSize) {
+            for (j in 0 until matrixSize) {
+                matrix[i][j] = (i * matrixSize + j) / (matrixSize * matrixSize).toFloat()
+            }
+        }
+
+        val resultBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val oldPixel = bitmap.getPixel(x, y)
+                val oldPixelGray = (briColor[0] * Color.red(oldPixel) +
+                        briColor[1] * Color.green(oldPixel) +
+                        briColor[2] * Color.blue(oldPixel)).toInt()
+
+                val matrixX = x % matrixSize
+                val matrixY = y % matrixSize
+                var newPixel: Int
+                if (oldPixelGray + matrix[matrixY][matrixX] * 255 - threshold >= 0) {
+                    newPixel = Color.WHITE
+                } else {
+                    newPixel = Color.BLACK
+                }
+                if(isinverted) {
+                    newPixel = if(newPixel == Color.BLACK) {
+                         Color.WHITE
+                    } else {
+                        Color.BLACK
+                    }
+                }
+                resultBitmap.setPixel(x, y, newPixel)
+            }
+        }
+        return resultBitmap
+    }
+
+
 
 
     fun convertImageToProtocol(src: Bitmap): ByteArray {

@@ -64,7 +64,7 @@
         android:layout_width="354dp"
         android:layout_height="48dp"
         android:layout_marginStart="16dp"
-        android:layout_marginTop="10dp"
+        android:layout_marginTop="16dp"
         android:layout_marginEnd="16dp"
         android:background="?attr/colorBackgroundFloating"
         app:layout_constraintEnd_toEndOf="parent"
@@ -121,5 +121,86 @@
         android:text="Rotate button"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/btn_convert_size" />
+
+    <ImageView
+        android:id="@+id/iv_real_size"
+        android:layout_width="1.18in"
+        android:layout_height="0.47in"
+        android:layout_marginStart="19dp"
+        android:layout_marginTop="16dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <Button
+        android:id="@+id/btn_realsize"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="10dp"
+        android:text="Real size"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/btnRestore" />
+
+    <com.google.android.material.slider.Slider
+        android:id="@+id/slider_threshold"
+        android:layout_width="142dp"
+        android:layout_height="44dp"
+        android:layout_marginTop="16dp"
+        android:stepSize="1"
+        android:value="255"
+        android:valueFrom="0"
+        android:valueTo="512"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/seekBarMatrix" />
+
+    <SeekBar
+        android:id="@+id/seekBarMatrix"
+        style="@style/Widget.AppCompat.SeekBar.Discrete"
+        android:layout_width="125dp"
+        android:layout_height="22dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginEnd="16dp"
+        android:max="8"
+        android:min="2"
+        android:progress="2"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/btn_prepare_BW" />
+
+    <TextView
+        android:id="@+id/textView2"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="28dp"
+        android:text="Matrix size"
+        app:layout_constraintBottom_toTopOf="@+id/btn_open_img"
+        app:layout_constraintEnd_toEndOf="@+id/seekBarMatrix" />
+
+    <TextView
+        android:id="@+id/textView3"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="40dp"
+        android:text="threshold"
+        app:layout_constraintBottom_toTopOf="@+id/slider_threshold"
+        app:layout_constraintEnd_toEndOf="@+id/slider_threshold" />
+
+    <com.google.android.material.switchmaterial.SwitchMaterial
+        android:id="@+id/switchInverse"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="4dp"
+        android:text="inversion"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/slider_threshold" />
+
+    <Button
+        android:id="@+id/btnRestore"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="10dp"
+        android:text="restore file"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/btn_open_img" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
