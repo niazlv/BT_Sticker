@@ -36,5 +36,5 @@ pixY = 203\*12/25.4
 Данные слать нужно через RFCOMM(BT serial port). На этом пока что все.
 
 ## Others
-
+Знаю, что приложение сырое. Делал сугубо для себя. Буду благодарен, если кто-то сделает интерфейс  
 Принтер покупался тут: [aliexpress](https://aliexpress.ru/item/1005004188980640.html?srcSns=sns_Telegram&businessType=ProductDetail&spreadType=socialShare&tt=MG&utm_medium=sharing&sku_id=12000030186776817)
