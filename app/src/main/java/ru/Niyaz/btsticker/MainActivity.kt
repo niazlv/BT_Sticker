@@ -245,9 +245,17 @@ class MainActivity : AppCompatActivity() {
                     isDiscovering = false
                 } else {
                     // start new search device
+                    // clear variables
                     ArrDevice = ArrayList()
                     arrDeviceString.clear()
                     foundDevicesSet.clear()
+                    val adapter = ArrayAdapter(
+                        this,
+                        android.R.layout.simple_spinner_item,
+                        arrDeviceString
+                    )
+                    spin_bt.adapter = adapter
+
                     searchBluetoothDevices(btAdapter)
                     btn_find_device.text = "Stop scan"
                     isDiscovering = true
