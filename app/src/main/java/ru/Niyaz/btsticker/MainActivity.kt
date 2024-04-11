@@ -1,11 +1,17 @@
 package ru.Niyaz.btsticker
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
+import android.content.BroadcastReceiver
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -31,7 +37,10 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.google.android.material.slider.Slider
 import com.google.android.material.switchmaterial.SwitchMaterial
+import java.lang.Math.sqrt
+import kotlin.random.Random
 import java.util.UUID
+import kotlin.math.roundToInt
 
 
 class MainActivity : AppCompatActivity() {
@@ -45,12 +54,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnRealSize: Button
     private lateinit var btnRestore: Button
 
+    private var isDiscovering = false
+
     private var btAdapter: BluetoothAdapter? = null
     private var btSocket: BluetoothSocket? = null
     private val uuid: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
 
     // store a paired devices
     private var ArrDevice: ArrayList<BluetoothDevice> = ArrayList()
+    private val arrDeviceString: ArrayList<String> = ArrayList()
+    private val foundDevicesSet = HashSet<String>()
 
     private lateinit var savedUriImage: Uri
     // monitoring any activity returns
@@ -74,11 +87,102 @@ class MainActivity : AppCompatActivity() {
 
     private fun PackageManager.missingSystemFeature(name: String): Boolean = !hasSystemFeature(name)
 
+    // constants for identify a requests permissions
+    companion object {
+        const val MY_PERMISSIONS_REQUEST_BLUETOOTH_SCAN = 1
+        const val MY_PERMISSIONS_REQUEST_BLUETOOTH = 2
+    }
+
+
+
+    private fun requestBluetoothPermissions() {
+        val requiredPermissions = mutableListOf<String>()
+
+
+        // please fix someone
+        // ---
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            requiredPermissions.add(Manifest.permission.BLUETOOTH_SCAN)
+            requiredPermissions.add(Manifest.permission.BLUETOOTH_CONNECT)
+            requiredPermissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
+        } else {
+            requiredPermissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+        // ---
+
+        // MutableList to Array(need for `requestPermissions`)
+        ActivityCompat.requestPermissions(this@MainActivity,
+            requiredPermissions.toTypedArray(),
+            MY_PERMISSIONS_REQUEST_BLUETOOTH
+        )
+    }
+    fun searchBluetoothDevices(adapter: BluetoothAdapter?) {
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.BLUETOOTH_SCAN
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            // request permission
+            requestBluetoothPermissions()
+        }
+        adapter?.startDiscovery()
+    }
+
+
+    private val bluetoothReceiver = object : BroadcastReceiver() {
+
+
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.action) {
+                BluetoothDevice.ACTION_FOUND -> {
+                    val device: BluetoothDevice = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)!!
+                    // filter for only this printer
+                    if (device.address.startsWith("42:21:BB:2C")) {
+                        if (foundDevicesSet.add(device.address)) {
+                            ArrDevice.add(device)
+                            if (ActivityCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.BLUETOOTH_CONNECT
+                                ) != PackageManager.PERMISSION_GRANTED
+                            ) {
+                                requestBluetoothPermissions()
+                            }
+                            arrDeviceString.add("'${device.address}' - '${device.name}'")
+                            val adapter = ArrayAdapter(
+                                context,
+                                android.R.layout.simple_spinner_item,
+                                arrDeviceString
+                            )
+                            spin_bt.adapter = adapter
+                        }
+                    }
+                }
+                // При завершении поиска
+                BluetoothAdapter.ACTION_DISCOVERY_FINISHED -> {
+                    isDiscovering = false
+                }
+            }
+        }
+    }
+
+
+
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        // need if u wanna copy a "coded" data, which is sent to the device
+        val myClipboard: ClipboardManager = this.getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
 
+        val filter = IntentFilter(BluetoothDevice.ACTION_FOUND).apply {
+            addAction(BluetoothAdapter.ACTION_DISCOVERY_STARTED)
+            addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED)
+        }
+        registerReceiver(bluetoothReceiver, filter)
+
+        requestBluetoothPermissions()
 
         packageManager.takeIf { it.missingSystemFeature(PackageManager.FEATURE_BLUETOOTH) }?.also {
             Toast.makeText(this, R.string.bluetooth_not_supported, Toast.LENGTH_SHORT).show()
@@ -130,31 +234,28 @@ class MainActivity : AppCompatActivity() {
         })
 
         // find Bluetooth device and fill scroll view with data
-        btn_find_device.setOnClickListener(View.OnClickListener { view ->
-            if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_DENIED)
-            {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
-                {
-                    ActivityCompat.requestPermissions(this@MainActivity, arrayOf(Manifest.permission.BLUETOOTH_CONNECT), 2)
+        btn_find_device.setOnClickListener {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_DENIED) {
+                requestBluetoothPermissions()
+            } else {
+                // if we search, stop it
+                if (isDiscovering) {
+                    btAdapter?.cancelDiscovery()
+                    btn_find_device.text = "Find device"
+                    isDiscovering = false
+                } else {
+                    // start new search device
+                    ArrDevice = ArrayList()
+                    arrDeviceString.clear()
+                    foundDevicesSet.clear()
+                    searchBluetoothDevices(btAdapter)
+                    btn_find_device.text = "Stop scan"
+                    isDiscovering = true
                 }
             }
-            val arrDeviceString: ArrayList<String> = ArrayList()
-            ArrDevice = ArrayList()
-            val pairedDevices: Set<BluetoothDevice>? = btAdapter?.bondedDevices
-            pairedDevices?.forEach { device ->
-                val deviceName = device.name
-                val deviceHardwareAddress = device.address // MAC address
-
-                ArrDevice.add(device)
-                arrDeviceString.add("'$deviceHardwareAddress' - '$deviceName'")
+        }
 
 
-            }
-            val adapter = ArrayAdapter(this,
-                android.R.layout.simple_spinner_item, arrDeviceString)
-
-            spin_bt.adapter = adapter
-        })
 
         // connect to selected device by spinner
         btn_connect.setOnClickListener(View.OnClickListener { view ->
@@ -170,6 +271,10 @@ class MainActivity : AppCompatActivity() {
                 btn_connect.isEnabled = false
                 btn_find_device.isEnabled = false
                 spin_bt.isEnabled = false
+                // stop Discovering
+                btAdapter?.cancelDiscovery()
+                btn_find_device.text = "Find device"
+                isDiscovering = false
             }
             else
                 Toast.makeText(this,"Can't connect to device!!!",Toast.LENGTH_SHORT).show()
@@ -185,6 +290,10 @@ class MainActivity : AppCompatActivity() {
             spin_bt.isEnabled = true
         })
 
+        fun ByteArray.toHexString(): String {
+            return this.joinToString("") { byte -> "%02x".format(byte) }
+        }
+
         // send data to BT device
         btn_send.setOnClickListener( View.OnClickListener {view ->
             val mOutputStream = btSocket?.outputStream
@@ -193,8 +302,14 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this,"image not selected!",Toast.LENGTH_SHORT).show()
                 return@OnClickListener
             }
+
             Log.d("btn_send","size img:${bitmap.height}*${bitmap.width}")
             val data = convertImageToProtocol(bitmap)
+            // Log.d("btn_send_data", data.toHexString())
+
+            // if u wanna copy "coded" image to the clipboard, uncomment here \/
+            //myClipboard.setPrimaryClip(ClipData.newPlainText("simple text2", data.toHexString()))
+
             mOutputStream?.write(data)
         })
 
@@ -207,12 +322,14 @@ class MainActivity : AppCompatActivity() {
             }
             Log.d("btn_prepare_image","size img:${bitmap.height}*${bitmap.width}")
 
-            val bitmap_monocrome = dithering(
-                bitmap,
-                sliderThreshold.value.toInt(),
-                seekBarMatrix.progress,
-                switchInverse.isChecked
-            )
+//            val bitmap_monocrome = dithering(
+//                bitmap,
+//                sliderThreshold.value.toInt(),
+//                seekBarMatrix.progress,
+//                switchInverse.isChecked
+//            )
+            val bitmap_monocrome = bayerDithering(bitmap)
+
             mImageView.setImageBitmap(bitmap_monocrome)
 
         })
@@ -289,6 +406,50 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
+    // Process the result of the authorization request
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        when (requestCode) {
+            MY_PERMISSIONS_REQUEST_BLUETOOTH_SCAN -> {
+                if ((grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED)) {
+                    // Permission is granted, you can start scanning
+                    searchBluetoothDevices(btAdapter)
+                } else {
+                    Toast.makeText(this, "Permission for Bluetooth scanning denied", Toast.LENGTH_SHORT).show()
+                }
+                return
+            }
+            MY_PERMISSIONS_REQUEST_BLUETOOTH -> {
+                if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
+                    // Permission is granted, you can start scanning
+                    searchBluetoothDevices(btAdapter)
+                } else {
+                    Toast.makeText(this, "Permission Denied", Toast.LENGTH_SHORT).show()
+                }
+                return
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // Stop search if user logs out of the application
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.BLUETOOTH_SCAN
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        if (btAdapter?.isDiscovering == true) {
+            btAdapter?.cancelDiscovery()
+        }
+        // Unregister the receiver as the application is being closed
+        unregisterReceiver(bluetoothReceiver)
+    }
+
+
+
     fun connectToBluetoothDevice(device: BluetoothDevice): Boolean {
         try {
             if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_DENIED)
@@ -297,6 +458,10 @@ class MainActivity : AppCompatActivity() {
                 {
                     ActivityCompat.requestPermissions(this@MainActivity, arrayOf(Manifest.permission.BLUETOOTH_CONNECT), 2)
                 }
+            }
+            // close BT connection, it enabled(bug protection)
+            if (btSocket?.isConnected == true) {
+                btSocket?.close()
             }
 
             Log.d("device", device.name.toString())
@@ -359,41 +524,67 @@ class MainActivity : AppCompatActivity() {
         return bmOut
     }
 
-    fun dithering(bitmap: Bitmap): Bitmap {
+    fun toGrayscale(bitmap: Bitmap): Bitmap {
         val width = bitmap.width
         val height = bitmap.height
-        val binaryBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
-        val redBri = 0.2989f
-        val greenBri = 0.5870f
-        val blueBri = 0.1140f
-        // матрица дизеринга 2x2
-        val ditherMatrix = arrayOf(
-            intArrayOf(0, 2),
-            intArrayOf(3, 1)
-        )
+        val resultBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
 
-        // проходим по каждому пикселю картинки
         for (y in 0 until height) {
             for (x in 0 until width) {
-                // получаем RGB значения пикселя
-                val color = bitmap.getPixel(x, y)
-                val r = Color.red(color)
-                val g = Color.green(color)
-                val b = Color.blue(color)
+                val pixel = bitmap.getPixel(x, y)
+                val r = pixel and 0xff
+                val g = pixel shr 8 and 0xff
+                val b = pixel shr 16 and 0xff
 
-                // преобразуем в оттенки серого
-                val gray = (redBri * r + greenBri * g + blueBri * b).toInt()
+                // Calculate the grayscale value using the formula (R + G + B) / 3
+                val gray = (r + g + b) / 3
 
-                // применяем матрицу дизеринга
-                if (gray > ditherMatrix[x % 2][y % 2] * 255 / 4) {
-                    binaryBitmap.setPixel(x, y, Color.WHITE)
-                } else {
-                    binaryBitmap.setPixel(x, y, Color.BLACK)
-                }
+                // Create a new pixel with the grayscale value for all color channels
+                val newPixel = (gray shl 16) or (gray shl 8) or gray
+                resultBitmap.setPixel(x, y, newPixel)
             }
         }
 
-        return binaryBitmap
+        return resultBitmap
+    }
+    fun bayerDithering(bitmap: Bitmap): Bitmap {
+        val width = bitmap.width
+        val height = bitmap.height
+        val resultBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ALPHA_8)
+        val bayerMatrix = arrayOf(
+            intArrayOf(0, 8, 2, 10),
+            intArrayOf(12, 4, 14, 6),
+            intArrayOf(3, 11, 1, 9),
+            intArrayOf(15, 7, 13, 5)
+        )
+
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val pixel = bitmap.getPixel(x, y)
+                val r = pixel and 0xff
+                val g = pixel shr 8 and 0xff
+                val b = pixel shr 16 and 0xff
+
+                // Calculate the grayscale value using the formula (R + G + B) / 3
+                val gray = (r + g + b) / 3
+
+                // Add blue noise
+                val noise = (Random.nextFloat() * 255).roundToInt()
+                val grayWithNoise = (gray + noise) / 2
+
+                // Calculate the new pixel value using the Bayer matrix
+                val bayerValue = bayerMatrix[y % 4][x % 4]
+                val newPixel = if (grayWithNoise > bayerValue) {
+                    255
+                } else {
+                    0
+                }
+
+                resultBitmap.setPixel(x, y, newPixel)
+            }
+        }
+
+        return resultBitmap
     }
 
     fun dithering(bitmap: Bitmap, threshold: Int = 255, matrixSize: Int = 8, isinverted: Boolean = false, briColor: Array<Float> = arrayOf<Float>(0.299f,0.587f,0.114f)): Bitmap {
