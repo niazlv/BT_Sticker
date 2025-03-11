@@ -330,13 +330,13 @@ class MainActivity : AppCompatActivity() {
             }
             Log.d("btn_prepare_image","size img:${bitmap.height}*${bitmap.width}")
 
-//            val bitmap_monocrome = dithering(
-//                bitmap,
-//                sliderThreshold.value.toInt(),
-//                seekBarMatrix.progress,
-//                switchInverse.isChecked
-//            )
-            val bitmap_monocrome = bayerDithering(bitmap)
+            val bitmap_monocrome = dithering(
+                bitmap,
+                sliderThreshold.value.toInt(),
+                seekBarMatrix.progress,
+                switchInverse.isChecked
+            )
+            // val bitmap_monocrome = bayerDithering(bitmap)
 
             mImageView.setImageBitmap(bitmap_monocrome)
 
